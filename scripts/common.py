@@ -39,7 +39,7 @@ MIRROR_CATALOG_TEMPLATE = MIRROR_BASE + "/AssetBundles/Catalog/{version}/Android
 TABLE_MANIFEST_TEMPLATE = OFFICIAL_BASE + "/Manifest/TableBundles/{version}/TableManifest"
 #: 官方 TableBundles 池，路径 = md5(文件) 前两位 / md5
 TABLE_POOL_TEMPLATE = OFFICIAL_BASE + "/pool/TableBundles/{prefix}/{crc}"
-#: 固定的旧版（已汉化）ExcelDB，update_exceldb.py 的还原来源
+#: 固定的旧版（已修改）ExcelDB，update_exceldb.py 的还原来源
 OLD_EXCELDB_URL = MIRROR_BASE + "/pool/TableBundles/51/517bb1fb1aa4d980ab87644ec10ecb2a"
 
 #: 版本号接口

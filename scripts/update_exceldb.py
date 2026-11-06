@@ -1,4 +1,4 @@
-"""把旧版（已汉化）ExcelDB 里指定 ID 的二进制数据还原到新版 ExcelDB 中。
+"""把已经手动修改过的 ExcelDB 里指定 ID 的二进制数据还原到新版 ExcelDB 中。
 
 数据来源：``ExcelDB_old.db``（固定链接的已还原库）+ ``ExcelDB_new.db``（官方最新库）。
 输出：新的 ExcelDB 文件，由调用方按 ``<TABLE_BUNDLE_ID>_<官方 ExcelDB 的 MD5>`` 重命名。
@@ -227,8 +227,8 @@ def _verify_database(path: Path) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="用旧版 ExcelDB 的汉化数据覆盖新版 ExcelDB")
-    parser.add_argument("--old", default=str(C.ROOT / "ExcelDB_old.db"), help="旧库（已汉化）")
+    parser = argparse.ArgumentParser(description="用修改过的 ExcelDB 的数据覆盖新版 ExcelDB")
+    parser.add_argument("--old", default=str(C.ROOT / "ExcelDB_old.db"), help="旧库（已修改）")
     parser.add_argument("--new", default=str(C.ROOT / "ExcelDB_new.db"), help="新库（官方最新）")
     parser.add_argument("--out", default=str(C.ROOT / "ExcelDB_patched.db"), help="输出文件")
     parser.add_argument("--analyze", action="store_true", help="额外执行 ANALYZE（会改变文件内容）")

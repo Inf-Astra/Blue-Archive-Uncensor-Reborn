@@ -131,7 +131,7 @@ def run(cfg: C.Config, versions: Dict[str, str], *, analyze: bool = True) -> Opt
     _assert_sqlite(new_db, EXCELDB_NAME)
     result.pristine_md5 = C.md5_file(new_db)
 
-    # 固定的旧库（已汉化）
+    # 固定的旧库（已修改）
     old_db = C.download(
         cfg.old_exceldb_url,
         cfg.downloads_dir / "ExcelDB_old.db",

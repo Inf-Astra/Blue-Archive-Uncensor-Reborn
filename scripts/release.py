@@ -20,59 +20,14 @@ COMPRESSION_METHODS = {
     "stored": zipfile.ZIP_STORED,
 }
 
-# --------------------------------------------------------------------------- #
-# Release 附件命名
-#
-# 注意：GitHub 的附件上传端点（uploads.github.com）**不接受非 ASCII 的附件名**，
-# 即使客户端已经做了 percent-encoding，也会返回 “HTTP 404: Not Found”。
-# 所以 zip 文件名一律用 ASCII，中文只放在 Release 标题 / 说明里（DISPLAY_*）。
-# --------------------------------------------------------------------------- #
-
-UNCNESOR_ZIP_TEMPLATE = "BlueArchiveCN-Uncensor-{date}.zip"
-RESTORE_ZIP_TEMPLATE = "BlueArchiveCN-Restore-{date}.zip"
-
-#: Release 标题可以随便写中文（和附件名不同，标题没有 ASCII 限制）
 RELEASE_TITLE_TEMPLATE = "BlueArchiveCN-Uncensor-{date}"
 
-UNCNESOR_DISPLAY = "反和谐包"
-RESTORE_DISPLAY = "恢复包"
-
-#: 除 ASCII 之外，这些字符在附件名 / 下载 URL 里也容易出问题
-FORBIDDEN_ASSET_CHARS = set(' "#%&?/\\*:<>\'`|')
-
 INSTALL_HINT = """\
-1. 解压{uncensor_display} `{uncensor}`，把其中的 `AssetBundles/`、`TableBundles/` 合并进游戏目录（覆盖同名文件）：
+1. 解压反和谐包 `{uncensor}`，把其中的 `AssetBundles/`、`TableBundles/` 合并进游戏目录（覆盖同名文件）：
    * Android：`/storage/emulated/0/Android/data/com.RoamingStar.BlueArchive/files/`
    * iOS：`/private/var/mobile/Containers/Data/Application/com.RoamingStar.BlueArchive/Documents/`
-2. 本包已经包含**当前版本全部**需要替换的文件（含上一版继承下来的补丁），直接覆盖即可，不需要先装历史包。
-3. 如需还原官方资源，解压{restore_display} `{restore}` 覆盖同名文件即可。
-4. 附件名必须是 ASCII（GitHub 限制），中文名只用于显示。
+2. 如遇到错误，需还原官方资源，解压恢复包 `{restore}` 再次覆盖即可。
 """
-
-
-def validate_asset_name(name: str) -> None:
-    """校验 Release 附件名；不合格时抛错并说明原因。"""
-    trouble = [ch for ch in name if ord(ch) > 127 or ch in FORBIDDEN_ASSET_CHARS]
-    if trouble:
-        raise ValueError(
-            f"Release 附件名必须是 ASCII、且不能包含 {''.join(sorted(FORBIDDEN_ASSET_CHARS))!r}: {name!r}\n"
-            "  -> GitHub 的 uploads.github.com 对非 ASCII 附件名只会返回 HTTP 404 Not Found。\n"
-            "  -> 中文名请写到 Release 标题 / 说明里（release.py 的 DISPLAY_* 常量），"
-            "或者把中文名文件放到自建镜像站。"
-        )
-
-
-def asset_name(kind: str, yymmdd: str) -> str:
-    """生成 Release 附件文件名（ASCII）。"""
-    template = UNCNESOR_ZIP_TEMPLATE if kind == "uncensor" else RESTORE_ZIP_TEMPLATE
-    name = template.format(date=yymmdd)
-    validate_asset_name(name)
-    return name
-
-
-def release_title(yymmdd: str) -> str:
-    """Release 标题（允许中文）。"""
-    return RELEASE_TITLE_TEMPLATE.format(date=yymmdd)
 
 
 @dataclass
@@ -215,29 +170,17 @@ def package(
         raise ValueError(f"不支持的压缩方式: {method}")
 
     C.clean_dir(cfg.dist_dir)
-    result.uncensor_zip = cfg.dist_dir / asset_name("uncensor", yymmdd)
+    result.uncensor_zip = cfg.dist_dir / f"BlueArchiveCN-Uncensor-{yymmdd}.zip"
     result.file_count = _zip_tree(cfg.out_dir, result.uncensor_zip, method=method, level=level)
     result.uncensor_bytes = result.uncensor_zip.stat().st_size
 
     restore_files = list(C.iter_files(cfg.restore_dir))
     if restore_files:
-        result.restore_zip = cfg.dist_dir / asset_name("restore", yymmdd)
+        result.restore_zip = cfg.dist_dir / f"BlueArchiveCN-Restore-{yymmdd}.zip"
         _zip_tree(cfg.restore_dir, result.restore_zip, method=method, level=level)
         result.restore_bytes = result.restore_zip.stat().st_size
     else:
         C.warn("没有可用于 Restore 包的官方原版文件")
-
-    # GitHub Release 对单个附件有 2 GiB 限制
-    limit = 2 * 1024**3
-    for path, label in (
-        (result.uncensor_zip, UNCNESOR_DISPLAY),
-        (result.restore_zip, RESTORE_DISPLAY),
-    ):
-        if path is not None and path.stat().st_size > limit:
-            C.warn(
-                f"{label} 包 {path.name} 有 {C.human_size(path.stat().st_size)}，"
-                "超过 GitHub Release 单文件 2 GiB 限制，上传会失败"
-            )
 
     C.log(
         f"[打包] Uncensor {C.human_size(result.uncensor_bytes)}"
@@ -286,46 +229,17 @@ def build_notes(
     excluded = [item for item in assets.shipped if item.kind == "exclusion"]
 
     parts: List[str] = []
-    parts.append(f"# BlueArchiveCN-反和谐包-{yymmdd}")
-    parts.append("")
-    parts.append(
-        "> 自动构建 · "
-        f"ResourceVersion `{versions.get('ResourceVersion', '')}` · "
-        f"TableVersion `{versions.get('TableVersion', '')}`"
-    )
-    parts.append("")
 
-    parts.append("## 版本变化")
+    parts.append("## AssetBundles 变化速览")
     parts.append("")
-    parts.append("| 项目 | 旧 | 新 |")
-    parts.append("| --- | --- | --- |")
-    for key in ("ResourceVersion", "TableVersion"):
-        parts.append(
-            f"| {key} | `{old_versions.get(key, '') or '—'}` | `{versions.get(key, '') or '—'}` |"
-        )
-    parts.append("")
-
-    parts.append("## AssetBundles")
-    parts.append("")
-    parts.append(
-        f"- 官方清单条目：{assets.official_entries}"
-        f"（官方基线：{assets.baseline_source}；上一版清单：{assets.modified_source or '无'}）"
-    )
     parts.append(
         f"- 上游差异：新增 {len(assets.official_added)} · CRC 变化 {len(assets.official_changed)} · "
         f"删除 {len(assets.official_removed)}"
     )
     parts.append(
-        f"- 继承上一版补丁：{len(assets.carried)} 个（上游未变化，重新生成后一并发布）"
-    )
-    parts.append(
         f"- 打包：{len(assets.shipped)} 个（贴图补丁 {len(patched)} · exclusions {len(excluded)}），"
         f"解压后 {C.human_size(assets.total_size)}"
     )
-    if package.uncensor_zip:
-        parts.append(f"- `{package.uncensor_zip.name}`：{C.human_size(package.uncensor_bytes)}")
-    if package.restore_zip:
-        parts.append(f"- `{package.restore_zip.name}`：{C.human_size(package.restore_bytes)}")
     parts.append("")
 
     if patched:
@@ -432,36 +346,15 @@ def build_notes(
         parts.append("")
         parts.extend(warnings)
 
-    if table is not None:
-        parts.append("## TableBundles")
-        parts.append("")
-        parts.append(f"- ExcelDB.db 官方：`{table.official_crc}`（{C.human_size(table.official_size)}）")
-        parts.append(f"- 还原行数：{table.rows_updated}，跳过 ID：{len(table.skipped)}")
-        parts.append(
-            f"- 输出：`TableBundles/{table.output_name}`"
-            f"（{C.human_size(table.patched_size)}，md5 `{table.patched_md5}`）"
-        )
-        if table.skipped:
-            detail = "、".join(f"{item['id']}({item['reason']})" for item in table.skipped[:10])
-            parts.append(f"- 跳过原因（前 10 个）：{detail}")
-        parts.append("")
-
     parts.append("## 安装说明")
     parts.append("")
-    uncensor_name = package.uncensor_zip.name if package.uncensor_zip else UNCNESOR_ZIP_TEMPLATE.format(date="*")
-    restore_name = package.restore_zip.name if package.restore_zip else RESTORE_ZIP_TEMPLATE.format(date="*")
+    uncensor_name = package.uncensor_zip.name if package.uncensor_zip else "BlueArchiveCN-Uncensor-*.zip"
+    restore_name = package.restore_zip.name if package.restore_zip else "BlueArchiveCN-Restore-*.zip"
     parts.append(
         INSTALL_HINT.format(
             uncensor=uncensor_name,
             restore=restore_name,
-            uncensor_display=UNCNESOR_DISPLAY,
-            restore_display=RESTORE_DISPLAY,
         ).rstrip()
-    )
-    parts.append("")
-
-    parts.append(
-        f"> 清单条目：Modified {manifests.modified_entries} 个修改 / 官方 {manifests.official_entries} 个总条目"
     )
     parts.append("")
 
