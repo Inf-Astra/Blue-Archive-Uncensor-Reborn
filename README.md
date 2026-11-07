@@ -11,7 +11,7 @@
 - 部分 UI 贴图（MomoTalk 等 ImageFont）
 - 部分 UI Prefabs （如角色简介隐藏的信息栏目、部分按钮位置等）
 
-**TableBundles**
+**TableBundles:**
 
 本项目以一个手动修改过的旧 ExcelDB 为基础，对新的 ExcelDB.db 进行 SQL UPDATE 来实现文本的自动修改。
 
@@ -20,7 +20,7 @@
 
 
 ## 二、本地运行
-本项目同样兼容本地运行。
+本项目同样兼容本地运行:
 ```
 git clone https://github.com/InfiniteAstra/Blue-Archive-Uncensor-Reborn.git
 ```

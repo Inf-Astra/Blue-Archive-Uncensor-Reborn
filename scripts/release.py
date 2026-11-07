@@ -20,15 +20,6 @@ COMPRESSION_METHODS = {
     "stored": zipfile.ZIP_STORED,
 }
 
-RELEASE_TITLE_TEMPLATE = "BlueArchiveCN-Uncensor-{date}"
-
-INSTALL_HINT = """\
-1. 解压反和谐包 `{uncensor}`，把其中的 `AssetBundles/`、`TableBundles/` 合并进游戏目录（覆盖同名文件）：
-   * Android：`/storage/emulated/0/Android/data/com.RoamingStar.BlueArchive/files/`
-   * iOS：`/private/var/mobile/Containers/Data/Application/com.RoamingStar.BlueArchive/Documents/`
-2. 如遇到错误，需还原官方资源，解压恢复包 `{restore}` 再次覆盖即可。
-"""
-
 
 @dataclass
 class ManifestStats:
@@ -348,13 +339,10 @@ def build_notes(
 
     parts.append("## 安装说明")
     parts.append("")
-    uncensor_name = package.uncensor_zip.name if package.uncensor_zip else "BlueArchiveCN-Uncensor-*.zip"
-    restore_name = package.restore_zip.name if package.restore_zip else "BlueArchiveCN-Restore-*.zip"
     parts.append(
-        INSTALL_HINT.format(
-            uncensor=uncensor_name,
-            restore=restore_name,
-        ).rstrip()
+        f"打开反和谐包 `BlueArchiveCN-Uncensor-{yymmdd}.zip`，内有 `AssetBundles`、`TableBundles` 两个目录。\n"
+        f"将两个目录都解压到 `/storage/emulated/0/Android/data/com.RoamingStar.BlueArchive[.bilibili]/files/`，**并覆盖同名文件**。\n"
+        f"如果覆盖文件后无法进入游戏，您可以使用 `BlueArchiveCN-Restore-{yymmdd}.zip`，覆盖后尝试只替换 `AssetBundles`。"
     )
     parts.append("")
 
