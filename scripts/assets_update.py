@@ -76,6 +76,8 @@ class AssetsResult:
     exclusion_upstream_changed: List[str] = field(default_factory=list)
     exclusion_updated: List[str] = field(default_factory=list)
     repatch_changed: List[str] = field(default_factory=list)
+    unused_replacement_sets: List[str] = field(default_factory=list)
+    unmodified_exclusions: List[str] = field(default_factory=list)
 
     @property
     def total_size(self) -> int:
@@ -103,6 +105,8 @@ class AssetsResult:
             "exclusion_upstream_changed": self.exclusion_upstream_changed,
             "exclusion_updated": self.exclusion_updated,
             "repatch_changed": self.repatch_changed,
+            "unused_replacement_sets": self.unused_replacement_sets,
+            "unmodified_exclusions": self.unmodified_exclusions,
         }
 
 
@@ -197,32 +201,43 @@ def load_previous_modified(
     cfg: C.Config,
     old_versions: Dict[str, str],
 ) -> Tuple[Dict[str, Dict[str, Any]], str]:
-    """加载“上一版修改清单”，用于继承已经打过补丁的文件。"""
+    """加载“上一版修改清单”，用于对比/统计（补丁目标不再依赖它，见 run()）。
+
+    优先级：仓库里的 ``bundleDownloadInfo_Modified.json`` > 镜像站。
+    仓库里那份就是本项目上一次发布出去的状态，比镜像站可靠得多；
+    镜像站的同名 catalog 有时只是官方清单的副本，用它当基线会把已有补丁“弄丢”。
+    """
     old_resource_version = (old_versions.get("ResourceVersion") or "").strip()
     state = _read_manifest_state(cfg)
     state_version = str(state.get("resourceVersion") or "").strip()
 
-    if cfg.modified_manifest.is_file() and old_resource_version and state_version == old_resource_version:
+    if cfg.modified_manifest.is_file():
         index = C.check_manifest(C.read_json(cfg.modified_manifest), source=cfg.modified_manifest.name)
-        C.log(f"[基线] 使用仓库清单 {cfg.modified_manifest.name} ({len(index)} 个文件, 对应 {state_version})")
+        if not state_version:
+            C.warn(
+                f"{cfg.manifest_state.name} 缺失，仍按仓库里的 {cfg.modified_manifest.name} 作为上一版基线"
+            )
+        elif old_resource_version and state_version != old_resource_version:
+            C.warn(
+                f"仓库清单对应版本 {state_version} 与 current.txt 的 {old_resource_version} 不一致，"
+                "仍按仓库清单作为上一版基线"
+            )
+        else:
+            C.log(f"[基线] 使用仓库清单 {cfg.modified_manifest.name} ({len(index)} 个文件, 对应 {state_version})")
         return index, "仓库 manifest/bundleDownloadInfo_Modified.json"
 
-    # 仓库里没有可用的上一版清单时，尝试从镜像站取（镜像发布的正是我们的 Modified 清单）
+    # 仓库里没有才去镜像站取（例如首次迁移）
     if old_resource_version:
         url = cfg.mirror_catalog_template.format(version=old_resource_version)
         cache = cfg.downloads_dir / f"mirror_bundleDownloadInfo_{old_resource_version}.json"
         try:
             _, index = fetch_manifest(url, cache, f"上一版修改清单 {old_resource_version}")
+            C.warn(f"仓库没有 Modified 清单，改用镜像站 {old_resource_version} 的清单作为参考")
             return index, f"镜像({old_resource_version})"
-        except Exception as exc:  # noqa: BLE001 - 拿不到就退化为只处理官方差异
+        except Exception as exc:  # noqa: BLE001 - 拿不到就算了
             C.warn(f"无法获取上一版修改清单: {exc}")
 
-    if cfg.modified_manifest.is_file():
-        index = C.check_manifest(C.read_json(cfg.modified_manifest), source=cfg.modified_manifest.name)
-        C.warn(f"回退使用仓库清单 {cfg.modified_manifest.name} 作为上一版基线（版本未知）")
-        return index, "仓库清单(版本未知)"
-
-    C.warn("没有上一版修改清单，本次只处理官方差异，已继承的补丁无法延续")
+    C.warn("没有上一版修改清单，本次按官方清单与 assets/ 目录重新生成全部补丁")
     return {}, ""
 
 
@@ -326,12 +341,33 @@ def run(
         C.log(f"[排除列表] 新增 {len(result.new_exclusions)} 个需要打包的 exclusion")
 
     # 6. 需要下载的文件
+    #
+    # 关键点：**所有能匹配到 assets/replacement/ 目录的 bundle 每次都会重新生成**，
+    # 而不是只处理“官方清单发生变化”或“上一版清单里改过”的文件。
+    # 这样：
+    #   * 不依赖上一版清单（它可能丢失/过期，曾经导致补丁被整批漏掉）；
+    #   * 本地更新替换贴图后，即使上游没变化也会带上；
+    #   * 每个 Release 都是完整补丁集，跑一次就能自愈。
     replacement_sets = RT.discover_replacement_sets(cfg.replacement_dir)
-    candidates = sorted(set(upstream_diff) | carried_set | set(exclusion_targets))
+    replacement_targets: Dict[str, str] = {}
+    for name in new_index:
+        prefix = RT.match_replacement_set(name, replacement_sets)
+        if prefix:
+            replacement_targets[name] = prefix
+
+    used_sets = set(replacement_targets.values())
+    result.unused_replacement_sets = sorted(set(replacement_sets) - used_sets)
+    if result.unused_replacement_sets:
+        C.warn(
+            "以下贴图目录在当前官方清单里找不到对应 bundle（可能上游改了名，需更新目录名）: "
+            + ", ".join(result.unused_replacement_sets)
+        )
+
+    candidates = sorted(set(upstream_diff) | carried_set | set(exclusion_targets) | set(replacement_targets))
 
     targets: List[str] = []
     for name in candidates:
-        if cfg.all_diffs or name in exclusions or RT.match_replacement_set(name, replacement_sets):
+        if cfg.all_diffs or name in exclusions or name in replacement_targets:
             targets.append(name)
 
     target_set = set(targets)
@@ -345,7 +381,8 @@ def run(
 
     skipped = sum(1 for name in upstream_diff if name not in target_set)
     C.log(
-        f"[目标] 候选 {len(candidates)} 个（官方差异 {len(upstream_diff)} + 继承 {len(result.carried)}），"
+        f"[目标] 候选 {len(candidates)} 个（官方差异 {len(upstream_diff)} + 继承 {len(result.carried)}"
+        f" + 贴图目录 {len(replacement_targets)} + exclusions {len(exclusion_targets)}），"
         f"需要处理 {len(targets)} 个"
         + (f"，跳过 {skipped} 个与补丁无关的官方差异文件（--all-diffs 可全部下载）" if skipped else "")
     )
@@ -394,6 +431,9 @@ def run(
                 note="来自 assets/exclusions",
             )
             result.shipped.append(item)
+            if md5 == str(entry.get("Crc", "")).lower():
+                # 本地文件与官方一致 = 这个 exclusion 其实还没改过（占位或忘记替换）
+                result.unmodified_exclusions.append(name)
             if upstream_changed:
                 result.exclusion_upstream_changed.append(name)
                 C.warn(f"[排除列表] {name} 上游资源有变化，可能需要手动重新修改该 bundle")
@@ -402,11 +442,11 @@ def run(
                 C.log(f"[exclusion] {name}: 本地文件与上一版不同（已手动更新？）")
             C.log(f"[exclusion] {name}: 直接使用本地文件 ({C.human_size(size)}, md5={md5})")
         else:
-            prefix = RT.match_replacement_set(name, replacement_sets)
+            prefix = replacement_targets.get(name)
             if prefix is None:
                 result.not_patchable.append(name)
                 continue
-            C.log(f"[patch] {name} <- {prefix}" + (" (继承)" if is_carried else ""))
+            C.log(f"[patch] {name} <- {prefix}" + (" (继承)" if is_carried else " (重新生成)"))
             patch = RT.patch_bundle(
                 source_bundle,
                 replacement_sets[prefix],

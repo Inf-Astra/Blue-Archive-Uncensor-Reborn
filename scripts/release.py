@@ -198,7 +198,7 @@ def _bundle_table(items: Sequence[AU.ShippedBundle]) -> str:
         elif item.kind == "exclusion":
             origin = "首次纳入"
         else:
-            origin = "—"
+            origin = "重新生成"
         textures = str(item.textures) if item.kind == "patched" else "-"
         lines.append(
             f"| `{item.name}` | {kind} | {origin} | {textures} | {C.human_size(item.size)} | `{item.md5}` |"
@@ -274,6 +274,34 @@ def build_notes(
         warnings.append("")
         for name in assets.missing_exclusions:
             warnings.append(f"- `{name}`")
+        warnings.append("")
+
+    if assets.unused_replacement_sets:
+        warnings.append("### 贴图目录找不到对应 bundle")
+        warnings.append("")
+        warnings.append(
+            "> 这些 `assets/replacement/` 目录在当前官方清单里匹配不到任何 bundle"
+            "（上游可能改了资源名），对应的贴图**没有**被打进补丁包。需要更新目录名。"
+        )
+        warnings.append("")
+        for name in assets.unused_replacement_sets:
+            warnings.append(f"- `{name}`")
+        warnings.append("")
+
+    if assets.unmodified_exclusions:
+        warnings.append("<details><summary>exclusions 与官方一致（可能还没改）</summary>")
+        warnings.append("")
+        warnings.append(
+            f"> 共 {len(assets.unmodified_exclusions)} 个 exclusion 文件与官方 bundle 完全相同，"
+            "说明它们还没被修改过（或只是占位）。如果本应修改，请检查后再提交。"
+        )
+        warnings.append("")
+        for name in assets.unmodified_exclusions[:50]:
+            warnings.append(f"- `{name}`")
+        if len(assets.unmodified_exclusions) > 50:
+            warnings.append(f"- ……其余 {len(assets.unmodified_exclusions) - 50} 个省略")
+        warnings.append("")
+        warnings.append("</details>")
         warnings.append("")
 
     if assets.unpatchable_carried:
