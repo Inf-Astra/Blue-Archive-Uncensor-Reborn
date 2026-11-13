@@ -22,7 +22,7 @@
 ## 二、本地运行
 本项目同样兼容本地运行:
 ```
-git clone https://github.com/InfiniteAstra/Blue-Archive-Uncensor-Reborn.git
+git clone https://github.com/Inf-Astra/Blue-Archive-Uncensor-Reborn.git
 ```
 ```
 python -m pip install -r requirements.txt
