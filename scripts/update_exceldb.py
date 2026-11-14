@@ -121,6 +121,14 @@ CONFIG: Dict[str, Dict[str, Any]] = {
                 26001   # 小玉
                 ]
     },
+    "CharacterVoiceSubtitleDBSchema": {
+        "primary_key": "CharacterVoiceGroupId",
+        "ids": [16001,  # 明日奈
+                13000,  # 茜
+                10028,  # 明日奈（邦妮）
+                20019,  # 茜（邦妮）
+                ]
+    },
     "AcademyMessangerDBSchema":{
         "primary_key": "CharacterId",
         "ids": [
